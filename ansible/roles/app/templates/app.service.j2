@@ -1,0 +1,12 @@
+[Unit]
+Description={{ app_name }}
+After=network.target
+
+[Service]
+User={{ app_user }}
+Environment=APP_PORT={{ app_port }}
+ExecStart=/usr/bin/java -jar {{ app_dir }}/{{ app_name }}.jar
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

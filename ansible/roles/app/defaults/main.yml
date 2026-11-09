@@ -1,0 +1,9 @@
+---
+app_name: devops-demo-app
+app_user: appuser
+app_dir: /opt/devops-demo-app
+app_port: 8080
+jar_src: "{{ playbook_dir }}/../target/devops-demo-app.jar"
+# true  -> install a systemd service (real servers / VMs)
+# false -> start with nohup (containers, CI agents without systemd)
+run_as_service: true

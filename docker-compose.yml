@@ -1,0 +1,14 @@
+# Optional: run Jenkins locally ->  docker compose up -d --build
+# Open http://localhost:9090  (get the admin password: docker logs devops-jenkins)
+services:
+  jenkins:
+    build: ./jenkins
+    container_name: devops-jenkins
+    ports:
+      - "9090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - ./:/workspace
+volumes:
+  jenkins_home:

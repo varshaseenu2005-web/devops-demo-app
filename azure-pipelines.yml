@@ -1,0 +1,77 @@
+# Azure Pipelines (Azure DevOps) - CI + Ansible configuration/deploy
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
+  MAVEN_OPTS: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+
+stages:
+  - stage: Build
+    displayName: Build and Test
+    jobs:
+      - job: Maven
+        steps:
+          - task: Cache@2
+            inputs:
+              key: 'maven | "$(Agent.OS)" | pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: $(MAVEN_CACHE_FOLDER)
+            displayName: Cache Maven packages
+
+          - task: Maven@3
+            displayName: Maven clean package
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'clean package'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.17'
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              mavenOptions: '$(MAVEN_OPTS)'
+
+          - task: CopyFiles@2
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)'
+              Contents: |
+                target/*.jar
+                ansible/**
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+
+  - stage: Deploy
+    displayName: Configure and Deploy (Ansible)
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: Ansible
+        steps:
+          - download: current
+            artifact: drop
+
+          - script: |
+              sudo apt-get update -y
+              sudo apt-get install -y ansible
+            displayName: Install Ansible
+
+          - script: |
+              ansible-playbook -i $(Pipeline.Workspace)/drop/ansible/inventory.ini \
+                $(Pipeline.Workspace)/drop/ansible/site.yml \
+                -e "jar_src=$(Pipeline.Workspace)/drop/target/devops-demo-app.jar" \
+                -e "run_as_service=false"
+            displayName: Run Ansible playbook
+
+          - script: |
+              sleep 5
+              curl -fsS http://localhost:8080/health
+            displayName: Smoke test

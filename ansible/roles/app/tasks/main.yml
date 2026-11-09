@@ -1,0 +1,66 @@
+---
+- name: Install Java 17 runtime and curl
+  ansible.builtin.apt:
+    name:
+      - openjdk-17-jre-headless
+      - curl
+    state: present
+    update_cache: true
+
+- name: Create application user
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    mode: "0755"
+
+- name: Copy application jar
+  ansible.builtin.copy:
+    src: "{{ jar_src }}"
+    dest: "{{ app_dir }}/{{ app_name }}.jar"
+    owner: "{{ app_user }}"
+    mode: "0644"
+  notify: Restart app service
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: app.service.j2
+    dest: "/etc/systemd/system/{{ app_name }}.service"
+    mode: "0644"
+  when: run_as_service | bool
+  notify: Restart app service
+
+- name: Enable and start service
+  ansible.builtin.systemd:
+    name: "{{ app_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: run_as_service | bool
+
+- name: Stop any old process (non-systemd mode)
+  ansible.builtin.shell: "pkill -f {{ app_name }}.jar || true"
+  changed_when: false
+  when: not (run_as_service | bool)
+
+- name: Start app with nohup (non-systemd mode)
+  ansible.builtin.shell: >
+    nohup java -jar {{ app_dir }}/{{ app_name }}.jar
+    > {{ app_dir }}/app.log 2>&1 &
+  environment:
+    APP_PORT: "{{ app_port }}"
+  async: 10
+  poll: 0
+  when: not (run_as_service | bool)
+
+- name: Wait for the app to listen on its port
+  ansible.builtin.wait_for:
+    port: "{{ app_port }}"
+    delay: 2
+    timeout: 30
